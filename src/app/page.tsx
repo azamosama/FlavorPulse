@@ -10,7 +10,6 @@ import {
 import { motion } from "framer-motion";
 
 // ✅ This is the correct way for framer-motion v12+
-const MotionSection = motion.section;
 
 export default function Home() {
   return (
