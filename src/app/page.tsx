@@ -1,12 +1,22 @@
+// src/app/page.tsx
+
+"use client";
+
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+} from "@/components/ui/card";
 import { motion } from "framer-motion";
+
+// ✅ This is the correct way for framer-motion v12+
+const MotionSection = motion.section;
 
 export default function Home() {
   return (
     <main className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 px-4">
       {/* Animated Header Section */}
-      <motion.section
+      <motion.div
         className="text-center space-y-6 max-w-2xl"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -23,7 +33,7 @@ export default function Home() {
             Try the Demo
           </a>
         </Button>
-      </motion.section>
+      </motion.div>
 
       {/* Animated Features Section */}
       <section className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-20 max-w-5xl w-full">
@@ -41,7 +51,7 @@ export default function Home() {
             <Card>
               <CardContent className="p-6">
                 <h3 className="text-xl font-semibold">{feature.title}</h3>
-                <p className="text-sm text-muted-foreground mt-2">{feature.desc}</p>
+                <p className="text-sm text-gray-500 mt-2">{feature.desc}</p>
               </CardContent>
             </Card>
           </motion.div>
