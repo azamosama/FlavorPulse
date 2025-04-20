@@ -1,0 +1,41 @@
+import { yelpScraper } from "./yelp-scraper"
+import { googleScraper } from "./google-scraper"
+import { tripadvisorScraper } from "./tripadvisor-scraper"
+import { socialMediaScraper } from "./social-media-scraper"
+import type { Review, ScraperOptions } from "./types"
+
+export async function scrapeReviews(options: ScraperOptions): Promise<Review[]> {
+  const { platforms, restaurantName, location, limit = 100 } = options
+  let allReviews: Review[] = []
+
+  try {
+    // Run scrapers in parallel for each selected platform
+    const scraperPromises = platforms.map(async (platform) => {
+      switch (platform.toLowerCase()) {
+        case "yelp":
+          return await yelpScraper({ restaurantName, location, limit })
+        case "google":
+          return await googleScraper({ restaurantName, location, limit })
+        case "tripadvisor":
+          return await tripadvisorScraper({ restaurantName, location, limit })
+        case "social":
+          return await socialMediaScraper({ restaurantName, location, limit })
+        default:
+          console.warn(`No scraper implemented for platform: ${platform}`)
+          return []
+      }
+    })
+
+    // Wait for all scrapers to complete
+    const results = await Promise.all(scraperPromises)
+
+    // Combine all results
+    allReviews = results.flat()
+
+    console.log(`Successfully scraped ${allReviews.length} reviews across ${platforms.length} platforms`)
+    return allReviews
+  } catch (error) {
+    console.error("Error during review scraping:", error)
+    throw new Error("Failed to scrape reviews")
+  }
+}
