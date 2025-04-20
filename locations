@@ -1,0 +1,69 @@
+import { NextResponse } from "next/server"
+
+// Define restaurant locations
+const locations = [
+  {
+    id: "1",
+    name: "Kansas City",
+    address: "123 Main St, Kansas City, MO 64111",
+    phone: "(816) 555-1234",
+    hours: "Mon-Sun: 11am-10pm",
+    rating: 4.7,
+    reviewCount: 845,
+  },
+  {
+    id: "2",
+    name: "Downtown",
+    address: "456 Broadway Ave, Kansas City, MO 64105",
+    phone: "(816) 555-5678",
+    hours: "Mon-Sun: 10am-11pm",
+    rating: 4.5,
+    reviewCount: 623,
+  },
+  {
+    id: "3",
+    name: "Uptown",
+    address: "789 Oak St, Kansas City, MO 64108",
+    phone: "(816) 555-9012",
+    hours: "Mon-Sun: 11am-9pm",
+    rating: 4.8,
+    reviewCount: 756,
+  },
+  {
+    id: "4",
+    name: "Westside",
+    address: "321 Elm St, Kansas City, MO 64112",
+    phone: "(816) 555-3456",
+    hours: "Mon-Sun: 11am-10pm",
+    rating: 4.9,
+    reviewCount: 624,
+  },
+  {
+    id: "5",
+    name: "Eastside",
+    address: "654 Pine St, Kansas City, MO 64127",
+    phone: "(816) 555-7890",
+    hours: "Mon-Sun: 11am-9pm",
+    rating: 4.6,
+    reviewCount: 518,
+  },
+]
+
+export async function GET(req: Request) {
+  try {
+    // Get query parameters
+    const url = new URL(req.url)
+    const id = url.searchParams.get("id")
+
+    // Filter by id if provided
+    let filteredLocations = locations
+    if (id) {
+      filteredLocations = locations.filter((location) => location.id === id)
+    }
+
+    return NextResponse.json(filteredLocations)
+  } catch (error) {
+    console.error("Error fetching locations:", error)
+    return NextResponse.json({ error: "Failed to fetch locations" }, { status: 500 })
+  }
+}
