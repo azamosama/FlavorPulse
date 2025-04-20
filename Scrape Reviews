@@ -1,0 +1,31 @@
+import { NextResponse } from "next/server"
+import { scrapeReviews } from "@/lib/scraper"
+import { batchAnalyzeSentiment } from "@/lib/sentiment-analyzer"
+
+export async function POST(req: Request) {
+  try {
+    const { restaurantName, location, platforms, timeframe } = await req.json()
+
+    // Validate required fields
+    if (!restaurantName || !platforms || platforms.length === 0) {
+      return NextResponse.json({ error: "Restaurant name and at least one platform are required" }, { status: 400 })
+    }
+
+    // Scrape reviews from the specified platforms
+    const reviews = await scrapeReviews({
+      restaurantName,
+      location: location || "all",
+      platforms,
+      limit: 100, // Adjust as needed
+      timeframe: timeframe || 30,
+    })
+
+    // Analyze sentiment of the scraped reviews
+    const analysisResult = await batchAnalyzeSentiment(reviews)
+
+    return NextResponse.json(analysisResult)
+  } catch (error) {
+    console.error("Error scraping and analyzing reviews:", error)
+    return NextResponse.json({ error: "Failed to scrape and analyze reviews" }, { status: 500 })
+  }
+}
