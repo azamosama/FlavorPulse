@@ -1,0 +1,20 @@
+export interface ScraperOptions {
+  platforms: string[]
+  restaurantName: string
+  location: string
+  limit?: number
+  timeframe?: number // in days
+}
+
+export interface Review {
+  id: string
+  platform: string
+  author: string
+  date: string
+  rating: number
+  text: string
+  location: string
+  categories?: string[] // e.g., "food quality", "service", etc.
+  menuItems?: string[] // mentioned menu items
+  url?: string // source URL
+}
