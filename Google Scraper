@@ -1,0 +1,124 @@
+import puppeteer from "puppeteer"
+import type { Review, ScraperOptions } from "./types"
+import { v4 as uuidv4 } from "uuid"
+
+export async function googleScraper(options: ScraperOptions): Promise<Review[]> {
+  const { restaurantName, location, limit = 100 } = options
+  const reviews: Review[] = []
+
+  try {
+    // Launch a headless browser
+    const browser = await puppeteer.launch({
+      headless: "new",
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    })
+    const page = await browser.newPage()
+
+    // Set user agent to avoid being blocked
+    await page.setUserAgent(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    )
+
+    // Navigate to Google Maps search
+    const searchUrl = `https://www.google.com/maps/search/${encodeURIComponent(restaurantName + " " + location)}`
+    await page.goto(searchUrl, { waitUntil: "networkidle2" })
+
+    // Wait for and click on the first result
+    await page.waitForSelector('a[aria-label*="Results for"]')
+    await page.click('a[aria-label*="Results for"]')
+
+    // Wait for the place details to load
+    await page.waitForSelector('button[aria-label*="reviews"]')
+
+    // Click on the reviews button
+    await page.click('button[aria-label*="reviews"]')
+
+    // Wait for reviews to load
+    await page.waitForSelector(".jftiEf")
+
+    // Scroll to load more reviews
+    let reviewCount = 0
+    let previousReviewCount = -1
+
+    while (reviewCount < limit && reviewCount !== previousReviewCount) {
+      previousReviewCount = reviewCount
+
+      // Scroll to the bottom of the reviews section
+      await page.evaluate(() => {
+        const reviewsSection = document.querySelector('.m6QErb[aria-label*="reviews"]')
+        if (reviewsSection) {
+          reviewsSection.scrollTop = reviewsSection.scrollHeight
+        }
+      })
+
+      // Wait for new reviews to load
+      await page.waitForTimeout(1000)
+
+      // Count the current number of reviews
+      reviewCount = await page.evaluate(() => {
+        return document.querySelectorAll(".jftiEf").length
+      })
+    }
+
+    // Extract all loaded reviews
+    const extractedReviews = await page.evaluate(() => {
+      const reviewElements = document.querySelectorAll(".jftiEf")
+      const reviews = []
+
+      for (const reviewElement of reviewElements) {
+        try {
+          // Extract rating
+          const ratingElement = reviewElement.querySelector(".kvMYJc")
+          const rating = ratingElement ? Number.parseInt(ratingElement.getAttribute("aria-label").split(" ")[0]) : 0
+
+          // Extract date
+          const dateElement = reviewElement.querySelector(".rsqaWe")
+          const date = dateElement ? dateElement.textContent.trim() : ""
+
+          // Extract review text
+          const textElement = reviewElement.querySelector(".wiI7pd")
+          const text = textElement ? textElement.textContent.trim() : ""
+
+          // Extract author
+          const authorElement = reviewElement.querySelector(".d4r55")
+          const author = authorElement ? authorElement.textContent.trim() : "Anonymous"
+
+          if (text) {
+            reviews.push({
+              rating,
+              date,
+              text,
+              author,
+            })
+          }
+        } catch (error) {
+          console.error("Error extracting review:", error)
+        }
+      }
+
+      return reviews
+    })
+
+    // Process and add the extracted reviews
+    for (let i = 0; i < Math.min(extractedReviews.length, limit); i++) {
+      const review = extractedReviews[i]
+      reviews.push({
+        id: uuidv4(),
+        platform: "Google",
+        author: review.author,
+        date: review.date,
+        rating: review.rating,
+        text: review.text,
+        location: location,
+        url: page.url(),
+      })
+    }
+
+    await browser.close()
+    console.log(`Successfully scraped ${reviews.length} reviews from Google`)
+    return reviews
+  } catch (error) {
+    console.error("Error scraping Google reviews:", error)
+    return reviews // Return any reviews we managed to scrape before the error
+  }
+}
