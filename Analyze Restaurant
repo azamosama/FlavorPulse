@@ -1,0 +1,20 @@
+import { NextResponse } from "next/server"
+import { analyzeRestaurantSentiment } from "@/lib/sentiment-service"
+
+export async function POST(req: Request) {
+  try {
+    const { location, platforms, timeframe } = await req.json()
+
+    // Call the sentiment analysis service
+    const analysisData = await analyzeRestaurantSentiment({
+      location,
+      platforms,
+      timeframe,
+    })
+
+    return NextResponse.json(analysisData)
+  } catch (error) {
+    console.error("Error analyzing restaurant sentiment:", error)
+    return NextResponse.json({ error: "Failed to analyze restaurant sentiment" }, { status: 500 })
+  }
+}
