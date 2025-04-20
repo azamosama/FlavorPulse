@@ -1,0 +1,121 @@
+import puppeteer from "puppeteer"
+import type { Review, ScraperOptions } from "./types"
+import { v4 as uuidv4 } from "uuid"
+
+export async function yelpScraper(options: ScraperOptions): Promise<Review[]> {
+  const { restaurantName, location, limit = 100 } = options
+  const reviews: Review[] = []
+
+  try {
+    // Launch a headless browser
+    const browser = await puppeteer.launch({
+      headless: "new",
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    })
+    const page = await browser.newPage()
+
+    // Set user agent to avoid being blocked
+    await page.setUserAgent(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    )
+
+    // Navigate to Yelp search page
+    const searchUrl = `https://www.yelp.com/search?find_desc=${encodeURIComponent(restaurantName)}&find_loc=${encodeURIComponent(location)}`
+    await page.goto(searchUrl, { waitUntil: "networkidle2" })
+
+    // Click on the first result (the restaurant)
+    await page.waitForSelector(".css-1m051bw")
+    await page.click(".css-1m051bw")
+
+    // Wait for the restaurant page to load
+    await page.waitForNavigation({ waitUntil: "networkidle2" })
+
+    // Get the current URL (restaurant page)
+    const restaurantUrl = page.url()
+
+    // Navigate to reviews tab
+    const reviewsUrl = `${restaurantUrl.split("?")[0]}/reviews`
+    await page.goto(reviewsUrl, { waitUntil: "networkidle2" })
+
+    let reviewCount = 0
+    let hasMoreReviews = true
+
+    // Scrape reviews across multiple pages
+    while (hasMoreReviews && reviewCount < limit) {
+      // Wait for reviews to load
+      await page.waitForSelector(".review__09f24__oHr9V")
+
+      // Extract reviews from current page
+      const pageReviews = await page.evaluate(() => {
+        const reviewElements = document.querySelectorAll(".review__09f24__oHr9V")
+        const extractedReviews = []
+
+        for (const reviewElement of reviewElements) {
+          try {
+            // Extract rating
+            const ratingElement = reviewElement.querySelector('[aria-label*="star rating"]')
+            const ratingText = ratingElement ? ratingElement.getAttribute("aria-label") : null
+            const rating = ratingText ? Number.parseInt(ratingText.split(" ")[0]) : 0
+
+            // Extract date
+            const dateElement = reviewElement.querySelector(".css-chan6m")
+            const date = dateElement ? dateElement.textContent.trim() : ""
+
+            // Extract review text
+            const textElement = reviewElement.querySelector(".comment__09f24__gu0rG")
+            const text = textElement ? textElement.textContent.trim() : ""
+
+            // Extract author
+            const authorElement = reviewElement.querySelector(".css-1m051bw")
+            const author = authorElement ? authorElement.textContent.trim() : "Anonymous"
+
+            if (text) {
+              extractedReviews.push({
+                rating,
+                date,
+                text,
+                author,
+              })
+            }
+          } catch (error) {
+            console.error("Error extracting review:", error)
+          }
+        }
+
+        return extractedReviews
+      })
+
+      // Process and add the extracted reviews
+      for (const review of pageReviews) {
+        reviews.push({
+          id: uuidv4(),
+          platform: "Yelp",
+          author: review.author,
+          date: review.date,
+          rating: review.rating,
+          text: review.text,
+          location: location,
+          url: page.url(),
+        })
+
+        reviewCount++
+        if (reviewCount >= limit) break
+      }
+
+      // Check if there's a next page
+      const nextButton = await page.$("a.next-link")
+      if (nextButton && reviewCount < limit) {
+        await Promise.all([page.click("a.next-link"), page.waitForNavigation({ waitUntil: "networkidle2" })])
+      } else {
+        hasMoreReviews = false
+      }
+    }
+
+    await browser.close()
+    console.log(`Successfully scraped ${reviews.length} reviews from Yelp`)
+    return reviews
+  } catch (error) {
+    console.error("Error scraping Yelp reviews:", error)
+    return reviews // Return any reviews we managed to scrape before the error
+  }
+}
