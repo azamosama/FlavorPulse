@@ -1,0 +1,129 @@
+import puppeteer from "puppeteer"
+import type { Review, ScraperOptions } from "./types"
+import { v4 as uuidv4 } from "uuid"
+
+export async function tripadvisorScraper(options: ScraperOptions): Promise<Review[]> {
+  const { restaurantName, location, limit = 100 } = options
+  const reviews: Review[] = []
+
+  try {
+    // Launch a headless browser
+    const browser = await puppeteer.launch({
+      headless: "new",
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    })
+    const page = await browser.newPage()
+
+    // Set user agent to avoid being blocked
+    await page.setUserAgent(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    )
+
+    // Navigate to TripAdvisor search page
+    const searchUrl = `https://www.tripadvisor.com/Search?q=${encodeURIComponent(restaurantName + " " + location)}`
+    await page.goto(searchUrl, { waitUntil: "networkidle2" })
+
+    // Click on the first restaurant result
+    await page.waitForSelector('a[data-automation="mainSearch_result_title"]')
+    await page.click('a[data-automation="mainSearch_result_title"]')
+
+    // Wait for the restaurant page to load
+    await page.waitForNavigation({ waitUntil: "networkidle2" })
+
+    // Navigate to the reviews tab if not already there
+    if (!page.url().includes("Reviews-")) {
+      const reviewsLink = await page.$('a[data-automation="reviewsLink"]')
+      if (reviewsLink) {
+        await reviewsLink.click()
+        await page.waitForNavigation({ waitUntil: "networkidle2" })
+      }
+    }
+
+    let reviewCount = 0
+    let hasMoreReviews = true
+    let pageNum = 0
+
+    // Scrape reviews across multiple pages
+    while (hasMoreReviews && reviewCount < limit) {
+      // Wait for reviews to load
+      await page.waitForSelector('div[data-automation="reviewCard"]')
+
+      // Extract reviews from current page
+      const pageReviews = await page.evaluate(() => {
+        const reviewElements = document.querySelectorAll('div[data-automation="reviewCard"]')
+        const extractedReviews = []
+
+        for (const reviewElement of reviewElements) {
+          try {
+            // Extract rating
+            const ratingElement = reviewElement.querySelector('svg[aria-label*="bubbles"]')
+            const ratingText = ratingElement ? ratingElement.getAttribute("aria-label") : null
+            // Parse rating like "5 of 5 bubbles" to get the number
+            const rating = ratingText ? Number.parseInt(ratingText.split(" ")[0]) : 0
+
+            // Extract date
+            const dateElement = reviewElement.querySelector('div[data-automation="reviewDate"]')
+            const date = dateElement ? dateElement.textContent.trim() : ""
+
+            // Extract review text
+            const textElement = reviewElement.querySelector('div[data-automation="reviewText"]')
+            const text = textElement ? textElement.textContent.trim() : ""
+
+            // Extract author
+            const authorElement = reviewElement.querySelector('a[data-automation="reviewAuthorName"]')
+            const author = authorElement ? authorElement.textContent.trim() : "Anonymous"
+
+            if (text) {
+              extractedReviews.push({
+                rating,
+                date,
+                text,
+                author,
+              })
+            }
+          } catch (error) {
+            console.error("Error extracting review:", error)
+          }
+        }
+
+        return extractedReviews
+      })
+
+      // Process and add the extracted reviews
+      for (const review of pageReviews) {
+        reviews.push({
+          id: uuidv4(),
+          platform: "TripAdvisor",
+          author: review.author,
+          date: review.date,
+          rating: review.rating,
+          text: review.text,
+          location: location,
+          url: page.url(),
+        })
+
+        reviewCount++
+        if (reviewCount >= limit) break
+      }
+
+      // Check if there's a next page
+      const nextButton = await page.$('a[data-automation="pagination_next"]')
+      if (nextButton && reviewCount < limit) {
+        await Promise.all([
+          page.click('a[data-automation="pagination_next"]'),
+          page.waitForNavigation({ waitUntil: "networkidle2" }),
+        ])
+        pageNum++
+      } else {
+        hasMoreReviews = false
+      }
+    }
+
+    await browser.close()
+    console.log(`Successfully scraped ${reviews.length} reviews from TripAdvisor`)
+    return reviews
+  } catch (error) {
+    console.error("Error scraping TripAdvisor reviews:", error)
+    return reviews // Return any reviews we managed to scrape before the error
+  }
+}
