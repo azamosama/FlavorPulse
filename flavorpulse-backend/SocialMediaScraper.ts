@@ -1,85 +1,68 @@
-import puppeteer from "puppeteer"
-import type { Review, ScraperOptions } from "./types"
+import puppeteer from "puppeteer-extra"
+import StealthPlugin from "puppeteer-extra-plugin-stealth"
+import type { Review, ScraperOptions } from "./types.js"
 import { v4 as uuidv4 } from "uuid"
+
+puppeteer.use(StealthPlugin())
 
 export async function socialMediaScraper(options: ScraperOptions): Promise<Review[]> {
   const { restaurantName, location, limit = 100 } = options
   const reviews: Review[] = []
+  const searchQuery = `${restaurantName} ${location} restaurant`
+  const searchUrl = `https://twitter.com/search?q=${encodeURIComponent(searchQuery)}&src=typed_query&f=live`
+
+  let browser
 
   try {
-    // This is a simplified implementation that focuses on Twitter/X
-    // In a production environment, you would need to implement more robust
-    // scrapers for multiple social media platforms and handle authentication
-
-    // Launch a headless browser
-    const browser = await puppeteer.launch({
+    browser = await puppeteer.launch({
       headless: "new",
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
     })
     const page = await browser.newPage()
 
-    // Set user agent to avoid being blocked
     await page.setUserAgent(
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36"
     )
 
-    // Navigate to Twitter search page
-    const searchQuery = `${restaurantName} ${location} restaurant`
-    const searchUrl = `https://twitter.com/search?q=${encodeURIComponent(searchQuery)}&src=typed_query&f=live`
+    await page.goto(searchUrl, { waitUntil: "networkidle2", timeout: 60000 })
 
-    await page.goto(searchUrl, { waitUntil: "networkidle2" })
-
-    // Wait for tweets to load
     await page.waitForSelector('article[data-testid="tweet"]', { timeout: 10000 }).catch(() => {
-      console.log("No tweets found or Twitter structure has changed")
+      console.warn("No tweets found or Twitter structure has changed.")
     })
 
-    // Extract tweets
     const tweets = await page.evaluate(() => {
       const tweetElements = document.querySelectorAll('article[data-testid="tweet"]')
       const extractedTweets = []
 
       for (const tweetElement of tweetElements) {
         try {
-          // Extract author
           const authorElement = tweetElement.querySelector('div[data-testid="User-Name"] a')
           const author = authorElement ? authorElement.textContent.trim() : "Anonymous"
 
-          // Extract tweet text
           const textElement = tweetElement.querySelector('div[data-testid="tweetText"]')
           const text = textElement ? textElement.textContent.trim() : ""
 
-          // Extract date
           const timeElement = tweetElement.querySelector("time")
           const date = timeElement ? timeElement.getAttribute("datetime") : ""
 
-          // We don't have explicit ratings on Twitter, so we'll use sentiment analysis later
-          const rating = 0
-
           if (text) {
-            extractedTweets.push({
-              author,
-              text,
-              date,
-              rating,
-            })
+            extractedTweets.push({ author, text, date, rating: 0 })
           }
         } catch (error) {
-          console.error("Error extracting tweet:", error)
+          console.error("Error extracting a tweet:", error)
         }
       }
 
       return extractedTweets
     })
 
-    // Process and add the extracted tweets
     for (let i = 0; i < Math.min(tweets.length, limit); i++) {
       const tweet = tweets[i]
       reviews.push({
         id: uuidv4(),
         platform: "Twitter",
         author: tweet.author,
-        date: tweet.date,
+        date: tweet.date || new Date().toISOString(),
         rating: tweet.rating,
         text: tweet.text,
         location: location,
@@ -87,31 +70,24 @@ export async function socialMediaScraper(options: ScraperOptions): Promise<Revie
       })
     }
 
-    // Note: For a more comprehensive social media scraper, you would also implement
-    // scrapers for Facebook, Instagram, etc., and combine the results
-
-    await browser.close()
-    console.log(`Successfully scraped ${reviews.length} social media posts`)
+    console.log(`✅ Scraped ${reviews.length} social media posts from Twitter`)
     return reviews
   } catch (error) {
-    console.error("Error scraping social media:", error)
+    console.error("❌ Error scraping Twitter:", error.message)
 
-    // If web scraping fails, return some mock data for demonstration purposes
-    // In a production environment, you would handle this differently
     if (reviews.length === 0) {
-      console.log("Generating mock social media data for demonstration")
+      console.log("⚠️ Returning fallback mock social media data")
 
-      // Generate some mock reviews
-      const mockReviews = [
+      const mockReviews: Review[] = [
         {
           id: uuidv4(),
           platform: "Twitter",
           author: "FoodLover22",
           date: new Date().toISOString(),
-          rating: 0, // No explicit rating
+          rating: 0,
           text: `Just had the best chicken sandwich at ${restaurantName} in ${location}! The sauce was amazing! #foodie`,
           location: location,
-          url: "",
+          url: searchUrl,
         },
         {
           id: uuidv4(),
@@ -121,7 +97,7 @@ export async function socialMediaScraper(options: ScraperOptions): Promise<Revie
           rating: 0,
           text: `${restaurantName}'s loaded fries are to die for! Definitely worth the trip to ${location}. #yum`,
           location: location,
-          url: "",
+          url: searchUrl,
         },
         {
           id: uuidv4(),
@@ -131,13 +107,31 @@ export async function socialMediaScraper(options: ScraperOptions): Promise<Revie
           rating: 0,
           text: `Chicken & waffles at ${restaurantName} - a perfect Sunday brunch in ${location}! The maple syrup was perfect.`,
           location: location,
-          url: "",
+          url: searchUrl,
         },
       ]
 
       return mockReviews
     }
 
-    return reviews // Return any reviews we managed to scrape before the error
+    return reviews
+  } finally {
+    if (browser) await browser.close()
   }
 }
+
+import { pathToFileURL } from "url"
+console.log("Current:", import.meta.url)
+console.log("Entry  :", `file://${process.argv[1]}`)
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  socialMediaScraper({
+    restaurantName: "Chick-In Waffle",
+    location: "Los Angeles, CA",
+    limit: 10,
+  }).then((reviews) => {
+    console.log(JSON.stringify(reviews, null, 2))
+  }).catch((err) => {
+    console.error("Error during scraping:", err)
+  })
+}
+
