@@ -8,6 +8,12 @@ import Link from "next/link";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
+type SentimentResult = {
+  overallSentiment: string;
+  summary: string;
+  details?: Record<string, any>;
+};
+
 function Header() {
   return (
     <header className="w-full flex items-center justify-between px-6 py-4 bg-white shadow-sm border-b">
@@ -32,7 +38,7 @@ function Header() {
 
 export default function AnalyzePage() {
   const [review, setReview] = useState("");
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<SentimentResult | null>(null);
 
   const handleSubmit = async () => {
     try {
