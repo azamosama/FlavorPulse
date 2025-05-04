@@ -9,10 +9,10 @@ import Link from "next/link";
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 type SentimentResult = {
-  overallSentiment: string;
-  summary: string;
-  details?: Record<string, any>;
-};
+    overallSentiment: string;
+    summary: string;
+    details?: Record<string, unknown>;
+  };  
 
 function Header() {
   return (
