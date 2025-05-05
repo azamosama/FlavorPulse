@@ -1,63 +1,72 @@
-import puppeteer from "puppeteer-extra"
-import StealthPlugin from "puppeteer-extra-plugin-stealth"
-import type { Review, ScraperOptions } from "./types.js"
-import { v4 as uuidv4 } from "uuid"
+import puppeteer from "puppeteer-extra";
+import StealthPlugin from "puppeteer-extra-plugin-stealth";
+import type { Review, ScraperOptions } from "./types.ts";
+import { v4 as uuidv4 } from "uuid";
+import { pathToFileURL } from "url";
 
-puppeteer.use(StealthPlugin())
+puppeteer.use(StealthPlugin());
+
+type TweetResult = {
+  author: string;
+  text: string;
+  date: string;
+  rating: number;
+};
 
 export async function socialMediaScraper(options: ScraperOptions): Promise<Review[]> {
-  const { restaurantName, location, limit = 100 } = options
-  const reviews: Review[] = []
-  const searchQuery = `${restaurantName} ${location} restaurant`
-  const searchUrl = `https://twitter.com/search?q=${encodeURIComponent(searchQuery)}&src=typed_query&f=live`
+  const { restaurantName, location, limit = 100 } = options;
+  const reviews: Review[] = [];
+  const searchQuery = `${restaurantName} ${location} restaurant`;
+  const searchUrl = `https://twitter.com/search?q=${encodeURIComponent(searchQuery)}&src=typed_query&f=live`;
 
-  let browser
+  let browser;
 
   try {
     browser = await puppeteer.launch({
-      headless: "new",
+      headless: true,
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    })
-    const page = await browser.newPage()
+    });
+
+    const page = await browser.newPage();
 
     await page.setUserAgent(
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36"
-    )
+    );
 
-    await page.goto(searchUrl, { waitUntil: "networkidle2", timeout: 60000 })
+    await page.goto(searchUrl, { waitUntil: "networkidle2", timeout: 60000 });
 
     await page.waitForSelector('article[data-testid="tweet"]', { timeout: 10000 }).catch(() => {
-      console.warn("No tweets found or Twitter structure has changed.")
-    })
+      console.warn("No tweets found or Twitter structure has changed.");
+    });
 
-    const tweets = await page.evaluate(() => {
-      const tweetElements = document.querySelectorAll('article[data-testid="tweet"]')
-      const extractedTweets = []
+    const tweets: TweetResult[] = await page.evaluate(() => {
+      const tweetElements = document.querySelectorAll('article[data-testid="tweet"]');
+      const extractedTweets: TweetResult[] = [];
 
       for (const tweetElement of tweetElements) {
         try {
-          const authorElement = tweetElement.querySelector('div[data-testid="User-Name"] a')
-          const author = authorElement ? authorElement.textContent.trim() : "Anonymous"
+          const authorElement = tweetElement.querySelector('div[data-testid="User-Name"] a');
+          const author = authorElement?.textContent?.trim() ?? "Anonymous";
 
-          const textElement = tweetElement.querySelector('div[data-testid="tweetText"]')
-          const text = textElement ? textElement.textContent.trim() : ""
+          const textElement = tweetElement.querySelector('div[data-testid="tweetText"]');
+          const text = textElement?.textContent?.trim() ?? "";
 
-          const timeElement = tweetElement.querySelector("time")
-          const date = timeElement ? timeElement.getAttribute("datetime") : ""
+          const timeElement = tweetElement.querySelector("time");
+          const date = timeElement?.getAttribute("datetime") ?? "";
 
           if (text) {
-            extractedTweets.push({ author, text, date, rating: 0 })
+            extractedTweets.push({ author, text, date, rating: 0 });
           }
         } catch (error) {
-          console.error("Error extracting a tweet:", error)
+          console.error("Error extracting a tweet:", error);
         }
       }
 
-      return extractedTweets
-    })
+      return extractedTweets;
+    });
 
     for (let i = 0; i < Math.min(tweets.length, limit); i++) {
-      const tweet = tweets[i]
+      const tweet = tweets[i];
       reviews.push({
         id: uuidv4(),
         platform: "Twitter",
@@ -65,18 +74,18 @@ export async function socialMediaScraper(options: ScraperOptions): Promise<Revie
         date: tweet.date || new Date().toISOString(),
         rating: tweet.rating,
         text: tweet.text,
-        location: location,
+        location,
         url: searchUrl,
-      })
+      });
     }
 
-    console.log(`✅ Scraped ${reviews.length} social media posts from Twitter`)
-    return reviews
-  } catch (error) {
-    console.error("❌ Error scraping Twitter:", error.message)
+    console.log(`✅ Scraped ${reviews.length} social media posts from Twitter`);
+    return reviews;
+  } catch (error: any) {
+    console.error("❌ Error scraping Twitter:", error.message);
 
     if (reviews.length === 0) {
-      console.log("⚠️ Returning fallback mock social media data")
+      console.log("⚠️ Returning fallback mock social media data");
 
       const mockReviews: Review[] = [
         {
@@ -86,7 +95,7 @@ export async function socialMediaScraper(options: ScraperOptions): Promise<Revie
           date: new Date().toISOString(),
           rating: 0,
           text: `Just had the best chicken sandwich at ${restaurantName} in ${location}! The sauce was amazing! #foodie`,
-          location: location,
+          location,
           url: searchUrl,
         },
         {
@@ -96,7 +105,7 @@ export async function socialMediaScraper(options: ScraperOptions): Promise<Revie
           date: new Date().toISOString(),
           rating: 0,
           text: `${restaurantName}'s loaded fries are to die for! Definitely worth the trip to ${location}. #yum`,
-          location: location,
+          location,
           url: searchUrl,
         },
         {
@@ -106,32 +115,34 @@ export async function socialMediaScraper(options: ScraperOptions): Promise<Revie
           date: new Date().toISOString(),
           rating: 0,
           text: `Chicken & waffles at ${restaurantName} - a perfect Sunday brunch in ${location}! The maple syrup was perfect.`,
-          location: location,
+          location,
           url: searchUrl,
         },
-      ]
+      ];
 
-      return mockReviews
+      return mockReviews;
     }
 
-    return reviews
+    return reviews;
   } finally {
-    if (browser) await browser.close()
+    if (browser) await browser.close();
   }
 }
 
-import { pathToFileURL } from "url"
-console.log("Current:", import.meta.url)
-console.log("Entry  :", `file://${process.argv[1]}`)
+// --- CLI Runner ---
+console.log("Current:", import.meta.url);
+console.log("Entry  :", `file://${process.argv[1]}`);
+
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   socialMediaScraper({
     restaurantName: "Chick-In Waffle",
-    location: "Los Angeles, CA",
+    location: "Kansas City, MO",
     limit: 10,
-  }).then((reviews) => {
-    console.log(JSON.stringify(reviews, null, 2))
-  }).catch((err) => {
-    console.error("Error during scraping:", err)
   })
+    .then((reviews) => {
+      console.log(JSON.stringify(reviews, null, 2));
+    })
+    .catch((err) => {
+      console.error("Error during scraping:", err);
+    });
 }
-
